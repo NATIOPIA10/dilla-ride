@@ -1,9 +1,10 @@
-# Replace the example names with real GitHub usernames, then remove the leading "# " on each line.
-# Code owners are asked to review changes automatically.
-#
-# /android/core/       @naol-username @barkot-username
-# /android/passenger/  @naol-username
-# /android/driver/     @barkot-username
-# /functions/          @robel-username
-# /admin/              @natnael-username
-# /docs/CONTRACT.md    @robel-username
+# Code owners are asked to review changes to their folders automatically.
+# Everyone listed here must be a collaborator with Write access (accepted the invitation).
+# Natnael: replace the placeholder below with your own GitHub username, then remove the leading "# ".
+
+/android/core/       @naol13 @Barkoteee
+/android/passenger/  @naol13
+/android/driver/     @Barkoteee
+/functions/          @robawon
+/docs/CONTRACT.md    @robawon
+# /admin/            @natnael-username
