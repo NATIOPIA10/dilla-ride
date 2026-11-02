@@ -1,0 +1,39 @@
+# OS and editors
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+
+# Android / Gradle
+.gradle/
+build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.jks
+*.keystore
+google-services.json
+
+# Node / web
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+*.log
+npm-debug.log*
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+.runtimeconfig.json
+serviceAccount*.json
+*-service-account*.json
+*-adminsdk-*.json
+emulator-data/

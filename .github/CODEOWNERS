@@ -1,0 +1,9 @@
+# Replace the example names with real GitHub usernames, then remove the leading "# " on each line.
+# Code owners are asked to review changes automatically.
+#
+# /android/core/       @naol-username @barkot-username
+# /android/passenger/  @naol-username
+# /android/driver/     @barkot-username
+# /functions/          @robel-username
+# /admin/              @natnael-username
+# /docs/CONTRACT.md    @robel-username
