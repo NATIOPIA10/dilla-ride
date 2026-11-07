@@ -37,3 +37,8 @@ serviceAccount*.json
 *-service-account*.json
 *-adminsdk-*.json
 emulator-data/
+
+# Supabase
+supabase/.branches/
+supabase/.temp/
+*.pem

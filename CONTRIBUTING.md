@@ -17,7 +17,7 @@
 | `android/core` | Both Naol and Barkot (and Robel if it changes contract models or function wrappers) |
 | Passenger app | Barkot (Robel if it calls a function in a new way) |
 | Driver app | Naol (Robel if it calls a function in a new way) |
-| `functions` | Natnael (tests) and Naol or Barkot (whichever app uses the function) |
+| `supabase` | Natnael (tests) and Naol or Barkot (whichever app uses the function) |
 | `admin` | Robel |
 | `docs/CONTRACT.md` | Robel edits it; everyone is told of every new version |
 
@@ -30,8 +30,9 @@
 - When the contract changes, the four role files in `docs/roles/` are regenerated. Do not edit them by hand.
 
 ## Secrets (never commit these)
-- Passwords, API keys (Infobip, maps), service account JSON files, `.env` files, signing keystores.
-- `google-services.json` is ignored by default. Get it from Robel (Firebase console) and keep it local.
+- Passwords, API keys (SMS provider, maps), the Supabase service role key and database password, FCM service account files, `.env` files, signing keystores.
+- The apps may contain only the Supabase project URL and the public anon key (kept in local config).
+- `google-services.json` is ignored by default. Get it from Robel (the Firebase project used for push) and keep it local.
 - If a secret is committed by mistake, tell Robel at once so it can be rotated.
 
 ## Working with Claude
