@@ -1,10 +1,9 @@
 # Code owners are asked to review changes to their folders automatically.
 # Everyone listed here must be a collaborator with Write access (accepted the invitation).
-# Natnael: replace the placeholder below with your own GitHub username, then remove the leading "# ".
 
 /android/core/       @naol13 @Barkoteee
 /android/passenger/  @naol13
 /android/driver/     @Barkoteee
-/functions/          @robawon
+/supabase/          @robawon
 /docs/CONTRACT.md    @robawon
-# /admin/            @NATIOPIA10
+/admin/            @NATIOPIA10

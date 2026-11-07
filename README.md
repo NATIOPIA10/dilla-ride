@@ -1,15 +1,15 @@
 # Dilla Ride
 
-A motorcycle ride system for Dilla City: a passenger app, a driver app, a backend (Firebase), and a web admin dashboard. Passengers request a ride, the nearest ready driver gets the request, payment is cash to the driver, and the platform takes a weekly commission. SOS alerts go to the admin team, which monitors them 24/7.
+A motorcycle ride system for Dilla City: a passenger app, a driver app, a backend (Supabase), and a web admin dashboard. Passengers request a ride, the nearest ready driver gets the request, payment is cash to the driver, and the platform takes a weekly commission. SOS alerts go to the admin team, which monitors them 24/7.
 
 ## Team
 
-| Person | Role | Folder |
-| --- | --- | --- |
-| Naol (A) | Passenger app and the shared `core` module | `android/passenger`, `android/core` |
-| Barkot (B) | Driver app | `android/driver` |
-| Robel (C) | Backend and contract owner | `functions` |
-| Natnael (D) | Admin dashboard, SOS board, and testing | `admin` |
+| Person | GitHub | Role | Folder |
+| --- | --- | --- | --- |
+| Naol (A) | @naol13 | Passenger app and the shared `core` module | `android/passenger`, `android/core` |
+| Barkot (B) | @Barkoteee | Driver app | `android/driver` |
+| Robel (C) | @robawon | Backend and contract owner | `supabase` |
+| Natnael (D) | (add yours) | Admin dashboard, SOS board, and testing | `admin` |
 
 ## Repository layout
 
@@ -18,7 +18,7 @@ android/
   core/        shared library used by both apps (Naol owns; Naol and Barkot both review)
   passenger/   passenger app
   driver/      driver app
-functions/     Firebase backend: functions, rules, indexes
+supabase/      Supabase backend: migrations, Edge Functions, seed data, config
 admin/         web admin dashboard and the development test console
 docs/          specification, master contract, workflow, and role files
 ```

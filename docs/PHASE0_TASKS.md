@@ -1,6 +1,6 @@
 # Phase 0: Setup checklist
 
-Done when: the services work, the budget alert is on, all four computers run the emulators, and the open decisions are settled and written into the contract.
+Done when: the services work, the budget alert is on, all four computers run the local Supabase, and the open decisions are settled and written into the contract.
 
 ## Everyone
 - [ ] GitHub account; added to the repository
@@ -16,12 +16,13 @@ Done when: the services work, the budget alert is on, all four computers run the
 - [ ] Admin project created in `admin/` (login and drivers screen started)
 
 ## Robel (C)
-- [ ] Firebase project created; region chosen; Blaze plan on; budget alert set
-- [ ] Authentication, Firestore, Realtime Database, Cloud Messaging, Functions, and App Check turned on
-- [ ] Both Android apps registered (passenger and driver package names)
-- [ ] Emulators running; teammates added as Editors (not Owners)
-- [ ] Infobip account opened; price per SMS to Ethiopia written down; a local provider quote requested
-- [ ] `sendOtp` and `verifyOtp` started
+- [ ] Supabase project created on the Free plan; region chosen
+- [ ] PostGIS, pg_cron, and pg_net enabled; Auth set up
+- [ ] Auth hooks created: Send SMS, Custom Access Token (`user_role`), Before User Created
+- [ ] No-cost Firebase project created for push (FCM); both Android apps registered
+- [ ] Local Supabase running (Docker); teammates added as team members (not Owners)
+- [ ] SMS provider account opened; price per SMS to Ethiopia written down; a local provider quote requested
+- [ ] Sign-in flow started (Send SMS hook and `completeProfile`)
 
 ## Naol (A)
 - [ ] `android/passenger` project and `android/core` skeleton created (with Barkot)
@@ -35,11 +36,12 @@ Done when: the services work, the budget alert is on, all four computers run the
 
 ## Decisions to write into the contract
 - [ ] Contract owner confirmed (Robel by default)
-- [ ] Firebase and Functions region
+- [ ] Supabase region and plan (Free while building; Pro before real riders)
 - [ ] Two Android package names
 - [ ] Map provider
 - [ ] Base fare and price per km (minimum fare is 20 birr)
-- [ ] SMS provider and price
+- [ ] SMS provider and price (Infobip or a local provider)
+- [ ] Heartbeat every 30 seconds and the 90-second disconnect threshold; whether pg_cron supports sub-minute schedules
 - [ ] SOS: 24/7 rota, operations phone numbers, backup number, emergency numbers confirmed with the Dilla police station
 - [ ] The values marked [PROPOSED] in the contract (list at the end of Section 12)
 - [ ] Role files regenerated after the contract changes
