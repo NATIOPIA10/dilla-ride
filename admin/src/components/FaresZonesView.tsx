@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { MapPin, Plus, RotateCcw } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { MapPin, Plus, RotateCcw, Undo2 } from 'lucide-react';
 import type { LatLng, ZoneType } from '../contract/types';
 import type { SandboxDatabase } from '../data/seedDilla';
 import { backend } from '../services/dillaBackend';
@@ -44,6 +44,26 @@ export const FaresZonesView: React.FC<FaresZonesViewProps> = ({ db }) => {
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
+
+  const fareSampleRows = useMemo(() => {
+    const base = Math.max(0, Number(baseFareSantim) || 0);
+    const perKm = Math.max(0, Number(pricePerKmSantim) || 0);
+    const min = Math.max(0, Number(minFareSantim) || 0);
+    const commPct = Math.max(0, Math.min(100, Number(commissionPct) || 0));
+
+    return [1.5, 3, 5, 8].map((km) => {
+      const raw = base + km * perKm;
+      const clamped = Math.max(min, raw);
+      const fareSantim = Math.ceil(clamped / 100) * 100;
+      const commSantim = Math.round((fareSantim * commPct) / 100);
+      return {
+        km,
+        fareSantim,
+        commSantim,
+        driverTakeSantim: fareSantim - commSantim,
+      };
+    });
+  }, [baseFareSantim, pricePerKmSantim, minFareSantim, commissionPct]);
 
   const handleCreateFareVersion = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -177,6 +197,24 @@ export const FaresZonesView: React.FC<FaresZonesViewProps> = ({ db }) => {
     }
   };
 
+  const settingFields: Array<{
+    label: string;
+    hint: string;
+    val: string;
+    setter: (v: string) => void;
+  }> = [
+    { label: 'Offer timeout (s)', hint: 'Seconds driver has to accept an offer', val: offerTimeout, setter: setOfferTimeout },
+    { label: 'Search timeout (s)', hint: 'Max seconds searching before NO_DRIVER_FOUND', val: searchTimeout, setter: setSearchTimeout },
+    { label: 'Max pickup dist (m)', hint: 'Max straight-line radius to match drivers', val: maxPickupDist, setter: setMaxPickupDist },
+    { label: 'Stale location (s)', hint: 'Seconds before driver GPS fix expires', val: staleLocationSec, setter: setStaleLocationSec },
+    { label: 'Move threshold (m)', hint: 'Min movement to avoid long-stop trigger', val: moveThreshold, setter: setMoveThreshold },
+    { label: 'Stalled ride (h)', hint: 'Hours active before ride flags stalled', val: stalledHours, setter: setStalledHours },
+    { label: 'SOS hold (s)', hint: 'Button press duration to trigger SOS', val: sosHoldSec, setter: setSosHoldSec },
+    { label: 'SOS escalation (s)', hint: 'Interval between backup SMS escalations', val: sosEscSec, setter: setSosEscSec },
+    { label: 'Long stop alert (min)', hint: 'Minutes stationary before safety check', val: longStopMin, setter: setLongStopMin },
+    { label: 'Disconnect alert (min)', hint: 'Offline driver threshold during active trip', val: disconnectMin, setter: setDisconnectMin },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
@@ -184,7 +222,7 @@ export const FaresZonesView: React.FC<FaresZonesViewProps> = ({ db }) => {
           Fares, Settings &amp; Restricted Zones Map
         </h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Publish immutable fare versions (santim), tune timeouts, and draw Dilla restricted zones and pickup gates.
+          Publish immutable fare versions (santim), tune dispatch/safety timers, and draw Dilla restricted zones and pickup gates.
         </p>
       </div>
 
@@ -217,7 +255,7 @@ export const FaresZonesView: React.FC<FaresZonesViewProps> = ({ db }) => {
                 .
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
                 <button
                   type="button"
@@ -249,14 +287,24 @@ export const FaresZonesView: React.FC<FaresZonesViewProps> = ({ db }) => {
                 </button>
               </div>
               {draftPoints.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setDraftPoints([])}
-                  className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded-lg inline-flex items-center gap-1.5 whitespace-nowrap"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Clear ({draftPoints.length})</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setDraftPoints((prev) => prev.slice(0, -1))}
+                    className="px-2.5 py-1.5 text-xs text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded-lg inline-flex items-center gap-1 whitespace-nowrap"
+                  >
+                    <Undo2 className="w-3.5 h-3.5" />
+                    <span>Undo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDraftPoints([])}
+                    className="px-2.5 py-1.5 text-xs text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded-lg inline-flex items-center gap-1 whitespace-nowrap"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Clear ({draftPoints.length})</span>
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -424,7 +472,7 @@ export const FaresZonesView: React.FC<FaresZonesViewProps> = ({ db }) => {
 
       {/* Fare Versions & Operational Settings */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 space-y-4">
+        <div className="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 space-y-5">
           <div>
             <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
               Fare Rules (fare_configs)
@@ -503,6 +551,29 @@ export const FaresZonesView: React.FC<FaresZonesViewProps> = ({ db }) => {
               </div>
             </div>
 
+            {/* Live Fare Simulator Preview */}
+            <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-3.5 space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Draft Fare Preview (Rounded to whole Birr)
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono tabular-nums">
+                {fareSampleRows.map((row) => (
+                  <div
+                    key={row.km}
+                    className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded"
+                  >
+                    <div className="text-slate-500 dark:text-slate-400">{row.km} km trip</div>
+                    <div className="font-semibold text-slate-900 dark:text-slate-100 mt-0.5">
+                      {formatBirr(row.fareSantim)}
+                    </div>
+                    <div className="text-slate-400 mt-0.5">
+                      Fee {formatBirr(row.commSantim)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="space-y-2 pt-1 text-sm">
               <label className="flex items-center gap-2.5 text-slate-700 dark:text-slate-300">
                 <input
@@ -561,7 +632,7 @@ export const FaresZonesView: React.FC<FaresZonesViewProps> = ({ db }) => {
           </div>
         </div>
 
-        {/* Settings Form */}
+        {/* Settings Form with Inline Field Hints */}
         <form
           onSubmit={handleSaveSettings}
           className="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 space-y-5"
@@ -575,29 +646,21 @@ export const FaresZonesView: React.FC<FaresZonesViewProps> = ({ db }) => {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
-            {[
-              ['Offer timeout (s)', offerTimeout, setOfferTimeout],
-              ['Search timeout (s)', searchTimeout, setSearchTimeout],
-              ['Max pickup dist (m)', maxPickupDist, setMaxPickupDist],
-              ['Stale location (s)', staleLocationSec, setStaleLocationSec],
-              ['Move threshold (m)', moveThreshold, setMoveThreshold],
-              ['Stalled ride (h)', stalledHours, setStalledHours],
-              ['SOS hold (s)', sosHoldSec, setSosHoldSec],
-              ['SOS escalation (s)', sosEscSec, setSosEscSec],
-              ['Long stop alert (min)', longStopMin, setLongStopMin],
-              ['Disconnect alert (min)', disconnectMin, setDisconnectMin],
-            ].map(([label, val, setter]) => (
-              <div key={String(label)}>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                  {String(label)}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+            {settingFields.map((field) => (
+              <div key={field.label}>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  {field.label}
                 </label>
                 <input
                   type="number"
-                  value={String(val)}
-                  onChange={(e) => (setter as (v: string) => void)(e.target.value)}
+                  value={field.val}
+                  onChange={(e) => field.setter(e.target.value)}
                   className="w-full px-3 py-2 font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg"
                 />
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                  {field.hint}
+                </div>
               </div>
             ))}
           </div>

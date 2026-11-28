@@ -87,3 +87,32 @@ export function getAddisIsoWeekId(date = new Date()): string {
   const weekNo = Math.ceil(((target.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
   return `${target.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
 }
+
+export function downloadCsv(
+  filename: string,
+  headers: string[],
+  rows: Array<Array<string | number | boolean | null | undefined>>
+): void {
+  const escapeCell = (val: string | number | boolean | null | undefined): string => {
+    if (val === null || val === undefined) return '';
+    const str = String(val);
+    if (/[",\n\r]/.test(str)) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const lines = [
+    headers.map(escapeCell).join(','),
+    ...rows.map((row) => row.map(escapeCell).join(',')),
+  ];
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

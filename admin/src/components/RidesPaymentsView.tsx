@@ -1,12 +1,19 @@
-import React, { useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, Phone, Search, XCircle } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, CheckCircle2, Download, Phone, Search, X, XCircle } from 'lucide-react';
 import type { DisputeOutcome, RideStatus } from '../contract/types';
 import type { SandboxDatabase } from '../data/seedDilla';
 import { backend } from '../services/dillaBackend';
-import { formatAddisShortTime, formatAddisTime, formatBirr } from '../utils/format';
+import {
+  downloadCsv,
+  formatAddisShortTime,
+  formatAddisTime,
+  formatBirr,
+} from '../utils/format';
 
 interface RidesPaymentsViewProps {
   db: SandboxDatabase;
+  initialSearch?: string;
+  onConsumeInitialSearch?: () => void;
 }
 
 const ACTIVE_STATUSES: RideStatus[] = [
@@ -17,9 +24,14 @@ const ACTIVE_STATUSES: RideStatus[] = [
   'IN_PROGRESS',
 ];
 
-export const RidesPaymentsView: React.FC<RidesPaymentsViewProps> = ({ db }) => {
+export const RidesPaymentsView: React.FC<RidesPaymentsViewProps> = ({
+  db,
+  initialSearch,
+  onConsumeInitialSearch,
+}) => {
   const [rideFilter, setRideFilter] = useState<'ALL' | 'ACTIVE' | 'STALLED' | 'COMPLETED' | 'CANCELLED'>('ALL');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch || '');
+  const [selectedRideId, setSelectedRideId] = useState<string | null>(initialSearch || null);
   const [closingRideId, setClosingRideId] = useState<string | null>(null);
   const [closeNote, setCloseNote] = useState('');
 
@@ -30,6 +42,15 @@ export const RidesPaymentsView: React.FC<RidesPaymentsViewProps> = ({ db }) => {
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialSearch) {
+      setSearch(initialSearch);
+      setSelectedRideId(initialSearch);
+      setRideFilter('ALL');
+      onConsumeInitialSearch?.();
+    }
+  }, [initialSearch, onConsumeInitialSearch]);
 
   const filteredRides = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -54,6 +75,11 @@ export const RidesPaymentsView: React.FC<RidesPaymentsViewProps> = ({ db }) => {
     });
   }, [db.rides, rideFilter, search]);
 
+  const selectedRide = useMemo(() => {
+    if (!selectedRideId) return null;
+    return db.rides.find((r) => r.id === selectedRideId) || null;
+  }, [db.rides, selectedRideId]);
+
   const stalledCount = db.rides.filter((r) => r.stalled).length;
   const openDisputesCount = db.disputes.filter((d) => d.status === 'OPEN').length;
 
@@ -63,6 +89,43 @@ export const RidesPaymentsView: React.FC<RidesPaymentsViewProps> = ({ db }) => {
     }
     return db.disputes.find((d) => d.status === 'OPEN') || db.disputes[0] || null;
   }, [db.disputes, selectedDisputeId]);
+
+  const handleExportRidesCsv = () => {
+    downloadCsv(
+      `dilla-rides-${new Date().toISOString().slice(0, 10)}.csv`,
+      ['Ride ID', 'Status', 'Stalled', 'Pickup', 'Destination', 'Passenger', 'Driver', 'Distance (m)', 'Fare (santim)', 'Fare Version', 'Created'],
+      filteredRides.map((r) => [
+        r.id,
+        r.status,
+        r.stalled,
+        r.pickup_address,
+        r.destination_address,
+        r.passenger_snapshot?.name || r.passenger_id,
+        r.driver_snapshot?.name || '',
+        r.distance_meters,
+        r.fare_santim,
+        r.fare_config_version,
+        r.created_at,
+      ])
+    );
+  };
+
+  const handleExportPaymentsCsv = () => {
+    downloadCsv(
+      `dilla-payments-${new Date().toISOString().slice(0, 10)}.csv`,
+      ['Ride ID', 'Week ID', 'Quoted (santim)', 'Confirmed (santim)', 'Commission (%)', 'Commission (santim)', 'Status', 'Updated'],
+      db.payments.map((p) => [
+        p.ride_id,
+        p.week_id,
+        p.fare_santim,
+        p.confirmed_fare_santim,
+        p.commission_percent,
+        p.commission_santim,
+        p.status,
+        p.updated_at,
+      ])
+    );
+  };
 
   const handleCloseStalled = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,7 +173,7 @@ export const RidesPaymentsView: React.FC<RidesPaymentsViewProps> = ({ db }) => {
             Rides, Stalled Queue &amp; Payment Disputes
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Monitor rides, close stalled rides (&gt;{db.settings.stalled_ride_hours}h), and resolve fare disputes.
+            Click any ride row to inspect its lifecycle timestamps, close stalled rides (&gt;{db.settings.stalled_ride_hours}h), and resolve fare disputes.
           </p>
         </div>
         <div className="flex items-center gap-3 text-sm font-mono tabular-nums">
@@ -134,10 +197,83 @@ export const RidesPaymentsView: React.FC<RidesPaymentsViewProps> = ({ db }) => {
         </div>
       )}
 
+      {/* Selected Ride Lifecycle Inspector */}
+      {selectedRide && (() => {
+        const pinRec = db.ride_pins.find((p) => p.ride_id === selectedRide.id);
+        return (
+          <div className="bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-800 rounded-xl p-5 space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                  Ride {selectedRide.id} · {selectedRide.status}
+                  {selectedRide.stalled ? ' · STALLED' : ''}
+                </div>
+                <div className="text-base font-bold text-slate-900 dark:text-slate-100 mt-0.5">
+                  {selectedRide.pickup_address} -&gt; {selectedRide.destination_address}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedRideId(null);
+                  if (search === selectedRide.id) setSearch('');
+                }}
+                aria-label="Close ride inspector"
+                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-md"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs font-mono tabular-nums border-t border-slate-200 dark:border-slate-800 pt-3.5">
+              <div>
+                <div className="text-slate-500 dark:text-slate-400">Created</div>
+                <div className="text-slate-900 dark:text-slate-100 mt-0.5">{formatAddisShortTime(selectedRide.created_at)}</div>
+              </div>
+              <div>
+                <div className="text-slate-500 dark:text-slate-400">Accepted</div>
+                <div className="text-slate-900 dark:text-slate-100 mt-0.5">{formatAddisShortTime(selectedRide.accepted_at)}</div>
+              </div>
+              <div>
+                <div className="text-slate-500 dark:text-slate-400">Arrived</div>
+                <div className="text-slate-900 dark:text-slate-100 mt-0.5">{formatAddisShortTime(selectedRide.arrived_at)}</div>
+              </div>
+              <div>
+                <div className="text-slate-500 dark:text-slate-400">Started</div>
+                <div className="text-slate-900 dark:text-slate-100 mt-0.5">{formatAddisShortTime(selectedRide.started_at)}</div>
+              </div>
+              <div>
+                <div className="text-slate-500 dark:text-slate-400">
+                  {selectedRide.cancelled_at ? `Cancelled (${selectedRide.cancelled_by})` : 'Completed'}
+                </div>
+                <div className="text-slate-900 dark:text-slate-100 mt-0.5">
+                  {formatAddisShortTime(selectedRide.completed_at || selectedRide.cancelled_at)}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs border-t border-slate-200 dark:border-slate-800 pt-3">
+              <div className="flex flex-wrap items-center gap-4 font-mono text-slate-600 dark:text-slate-300">
+                <span>Fare: {formatBirr(selectedRide.fare_santim)} ({(selectedRide.distance_meters / 1000).toFixed(2)} km)</span>
+                {pinRec && <span>PIN fails: {pinRec.failed_attempts}/{db.settings.max_pin_attempts}</span>}
+                {selectedRide.contact && (
+                  <>
+                    <a href={`tel:${selectedRide.contact.passenger_phone}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                      Passenger: {selectedRide.contact.passenger_phone}
+                    </a>
+                    <a href={`tel:${selectedRide.contact.driver_phone}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                      Driver: {selectedRide.contact.driver_phone}
+                    </a>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Rides Table */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
         <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+          <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
             {(['ALL', 'ACTIVE', 'STALLED', 'COMPLETED', 'CANCELLED'] as const).map((tab) => (
               <button
                 key={tab}
@@ -155,15 +291,25 @@ export const RidesPaymentsView: React.FC<RidesPaymentsViewProps> = ({ db }) => {
             ))}
           </div>
 
-          <div className="relative w-full sm:w-80">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search ride ID, route, driver, passenger"
-              className="w-full pl-9 pr-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
-            />
+          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-72">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search ride ID, route, driver, passenger"
+                className="w-full pl-9 pr-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleExportRidesCsv}
+              className="px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg inline-flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>CSV</span>
+            </button>
           </div>
         </div>
 
@@ -225,8 +371,17 @@ export const RidesPaymentsView: React.FC<RidesPaymentsViewProps> = ({ db }) => {
                   const canAdminClose = !['COMPLETED', 'CANCELLED', 'NO_DRIVER_FOUND', 'EXPIRED'].includes(
                     ride.status
                   );
+                  const isSelected = selectedRideId === ride.id;
                   return (
-                    <tr key={ride.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                    <tr
+                      key={ride.id}
+                      onClick={() => setSelectedRideId(isSelected ? null : ride.id)}
+                      className={`cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'bg-blue-50/60 dark:bg-blue-950/30'
+                          : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                      }`}
+                    >
                       <td className="px-5 py-4">
                         <div className="font-mono text-xs font-semibold text-slate-900 dark:text-slate-100">
                           {ride.status}
@@ -267,7 +422,7 @@ export const RidesPaymentsView: React.FC<RidesPaymentsViewProps> = ({ db }) => {
                       <td className="px-5 py-4 font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">
                         {formatAddisShortTime(ride.created_at)}
                       </td>
-                      <td className="px-5 py-4 text-right">
+                      <td className="px-5 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                         {canAdminClose ? (
                           <button
                             type="button"
@@ -451,13 +606,23 @@ export const RidesPaymentsView: React.FC<RidesPaymentsViewProps> = ({ db }) => {
 
         {/* Payments Table */}
         <div className="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-              Cash Payments Ledger
-            </h2>
-            <span className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
-              {db.payments.length} records
-            </span>
+          <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                Cash Payments Ledger
+              </h2>
+              <div className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
+                {db.payments.length} records
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleExportPaymentsCsv}
+              className="px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg inline-flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>CSV</span>
+            </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
