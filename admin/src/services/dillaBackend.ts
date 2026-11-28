@@ -19,6 +19,25 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
+export interface SupabaseStatus {
+  configured: boolean;
+  projectHost: string;
+  sessionEmail: string | null;
+  sessionRole: string | null;
+  lastSyncedAt: string | null;
+  syncedTables: string[];
+  missingTables: string[];
+  authError: string | null;
+}
+
+function getProjectHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 let supabaseClient: SupabaseClient | null = null;
 if (isSupabaseConfigured) {
   supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -52,9 +71,45 @@ class DillaBackendService {
   private listeners = new Set<() => void>();
   private mode: BackendMode = 'sandbox';
   private adminId = '11111111-1111-4111-8111-111111111101';
+  private supabaseStatus: SupabaseStatus = {
+    configured: isSupabaseConfigured,
+    projectHost: getProjectHost(SUPABASE_URL),
+    sessionEmail: null,
+    sessionRole: null,
+    lastSyncedAt: null,
+    syncedTables: [],
+    missingTables: [],
+    authError: null,
+  };
+
+  constructor() {
+    if (supabaseClient) {
+      this.refreshSupabaseSession().catch(() => {});
+      supabaseClient.auth.onAuthStateChange((_event, session) => {
+        const user = session?.user ?? null;
+        this.supabaseStatus = {
+          ...this.supabaseStatus,
+          sessionEmail: user?.email ?? user?.phone ?? null,
+          sessionRole:
+            (user?.app_metadata?.role as string | undefined) ||
+            (user?.user_metadata?.role as string | undefined) ||
+            (user ? 'AUTHENTICATED' : null),
+          authError: null,
+        };
+        if (user?.id) {
+          this.adminId = user.id;
+        }
+        this.emit();
+      });
+    }
+  }
 
   getMode(): BackendMode {
     return this.mode;
+  }
+
+  getSupabaseStatus(): SupabaseStatus {
+    return this.supabaseStatus;
   }
 
   setMode(next: BackendMode): void {
@@ -108,11 +163,100 @@ class DillaBackendService {
     ];
   }
 
-  // Live Supabase synchronization if configured
+  async refreshSupabaseSession(): Promise<void> {
+    if (!supabaseClient) return;
+    const { data, error } = await supabaseClient.auth.getSession();
+    if (error) {
+      this.supabaseStatus = { ...this.supabaseStatus, authError: error.message };
+      this.emit();
+      return;
+    }
+    const user = data.session?.user ?? null;
+    this.supabaseStatus = {
+      ...this.supabaseStatus,
+      sessionEmail: user?.email ?? user?.phone ?? null,
+      sessionRole:
+        (user?.app_metadata?.role as string | undefined) ||
+        (user?.user_metadata?.role as string | undefined) ||
+        (user ? 'AUTHENTICATED' : null),
+      authError: null,
+    };
+    if (user?.id) {
+      this.adminId = user.id;
+    }
+    this.emit();
+  }
+
+  async signInSupabaseAdmin(email: string, password: string): Promise<void> {
+    if (!supabaseClient) {
+      throw new Error('Supabase client is not configured.');
+    }
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+    if (error) {
+      this.supabaseStatus = { ...this.supabaseStatus, authError: error.message };
+      this.emit();
+      throw new Error(error.message);
+    }
+    const user = data.user;
+    this.supabaseStatus = {
+      ...this.supabaseStatus,
+      sessionEmail: user?.email ?? null,
+      sessionRole:
+        (user?.app_metadata?.role as string | undefined) ||
+        (user?.user_metadata?.role as string | undefined) ||
+        'AUTHENTICATED',
+      authError: null,
+    };
+    if (user?.id) {
+      this.adminId = user.id;
+    }
+    this.emit();
+    if (this.mode === 'supabase') {
+      await this.syncFromSupabase();
+    }
+  }
+
+  async signOutSupabaseAdmin(): Promise<void> {
+    if (!supabaseClient) return;
+    await supabaseClient.auth.signOut();
+    this.supabaseStatus = {
+      ...this.supabaseStatus,
+      sessionEmail: null,
+      sessionRole: null,
+      authError: null,
+    };
+    this.emit();
+  }
+
+  // Live Supabase synchronization with resilient table-by-table diagnostics
   async syncFromSupabase(): Promise<void> {
     if (!supabaseClient) return;
+    await this.refreshSupabaseSession();
+
+    const syncedTables: string[] = [];
+    const missingTables: string[] = [];
+
+    const checkRes = (name: string, error: { code?: string; message?: string } | null) => {
+      if (!error) {
+        syncedTables.push(name);
+        return true;
+      }
+      if (error.code === 'PGRST205' || error.message?.includes('schema cache') || error.message?.includes('does not exist')) {
+        missingTables.push(name);
+      } else {
+        missingTables.push(`${name} (${error.code || 'RLS'})`);
+      }
+      return false;
+    };
+
+    // Support both Robel's `users` table (migration 2) and `profiles` alias
+    const usersRes = await supabaseClient.from('users').select('*');
+    const profilesFallback = usersRes.error ? await supabaseClient.from('profiles').select('*') : null;
+
     const [
-      profilesRes,
       driversRes,
       ridesRes,
       paymentsRes,
@@ -126,7 +270,6 @@ class DillaBackendService {
       sosRes,
       trackRes,
     ] = await Promise.all([
-      supabaseClient.from('profiles').select('*'),
       supabaseClient.from('drivers').select('*'),
       supabaseClient.from('rides').select('*').order('created_at', { ascending: false }).limit(100),
       supabaseClient.from('payments').select('*').order('created_at', { ascending: false }).limit(100),
@@ -141,19 +284,42 @@ class DillaBackendService {
       supabaseClient.from('sos_track').select('*').order('at', { ascending: true }),
     ]);
 
-    if (profilesRes.data) this.db.profiles = profilesRes.data;
-    if (driversRes.data) this.db.drivers = driversRes.data;
-    if (ridesRes.data) this.db.rides = ridesRes.data;
-    if (paymentsRes.data) this.db.payments = paymentsRes.data;
-    if (disputesRes.data) this.db.disputes = disputesRes.data;
-    if (zonesRes.data) this.db.restricted_zones = zonesRes.data;
-    if (pointsRes.data) this.db.meeting_points = pointsRes.data;
-    if (statementsRes.data) this.db.weekly_statements = statementsRes.data;
-    if (logsRes.data) this.db.audit_logs = logsRes.data;
-    if (faresRes.data) this.db.fare_configs = faresRes.data;
-    if (settingsRes.data) this.db.settings = settingsRes.data;
-    if (sosRes.data) this.db.sos_alerts = sosRes.data;
-    if (trackRes.data) this.db.sos_track = trackRes.data;
+    const activeUsersRes = !usersRes.error ? usersRes : profilesFallback || usersRes;
+    if (checkRes(!usersRes.error ? 'users' : 'profiles', activeUsersRes.error) && activeUsersRes.data) {
+      this.db.profiles = activeUsersRes.data;
+    }
+
+    if (checkRes('drivers', driversRes.error) && driversRes.data) {
+      // Normalize Robel's `motorcycle` JSONB column onto flat `plate`/`model`/`color` fields if present
+      this.db.drivers = driversRes.data.map((row: Record<string, unknown>) => {
+        const moto = (row.motorcycle as { plate?: string; model?: string; color?: string } | undefined) || {};
+        return {
+          ...row,
+          plate: (row.plate as string) || moto.plate || '',
+          model: (row.model as string) || moto.model || '',
+          color: (row.color as string) || moto.color || '',
+        } as unknown as SandboxDatabase['drivers'][number];
+      });
+    }
+
+    if (checkRes('rides', ridesRes.error) && ridesRes.data) this.db.rides = ridesRes.data;
+    if (checkRes('payments', paymentsRes.error) && paymentsRes.data) this.db.payments = paymentsRes.data;
+    if (checkRes('disputes', disputesRes.error) && disputesRes.data) this.db.disputes = disputesRes.data;
+    if (checkRes('restricted_zones', zonesRes.error) && zonesRes.data) this.db.restricted_zones = zonesRes.data;
+    if (checkRes('meeting_points', pointsRes.error) && pointsRes.data) this.db.meeting_points = pointsRes.data;
+    if (checkRes('weekly_statements', statementsRes.error) && statementsRes.data) this.db.weekly_statements = statementsRes.data;
+    if (checkRes('audit_logs', logsRes.error) && logsRes.data) this.db.audit_logs = logsRes.data;
+    if (checkRes('fare_configs', faresRes.error) && faresRes.data) this.db.fare_configs = faresRes.data;
+    if (checkRes('settings', settingsRes.error) && settingsRes.data) this.db.settings = settingsRes.data;
+    if (checkRes('sos_alerts', sosRes.error) && sosRes.data) this.db.sos_alerts = sosRes.data;
+    if (checkRes('sos_track', trackRes.error) && trackRes.data) this.db.sos_track = trackRes.data;
+
+    this.supabaseStatus = {
+      ...this.supabaseStatus,
+      lastSyncedAt: new Date().toISOString(),
+      syncedTables,
+      missingTables,
+    };
     this.emit();
   }
 
